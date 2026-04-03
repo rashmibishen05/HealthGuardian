@@ -1,5 +1,7 @@
 # Offline Health Guardian
 
+**Live Demo:** [https://health-guardian-gilt.vercel.app/](https://health-guardian-gilt.vercel.app/)
+
 An offline-first Progressive Web App (PWA) health assistant built with React, TypeScript, Vite, and RunAnywhere SDK.
 
 ## Features
