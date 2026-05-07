@@ -83,7 +83,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       // 1. Try Real Nodemailer Server First
       if (isOnline) {
         try {
-          const response = await fetch('http://localhost:3001/api/send-otp', {
+          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+          const response = await fetch(`${apiUrl}/api/send-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -177,7 +178,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     // 2. Real Server Verification
     try {
-      const response = await fetch('http://localhost:3001/api/verify-otp', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${apiUrl}/api/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp: enteredOtp }),
@@ -191,7 +193,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         if (isOnline) {
           setStatus("☁️ Restoring Cloud Data...");
           try {
-            const dataRes = await fetch(`http://localhost:3001/api/get-data?email=${email}`);
+            const dataRes = await fetch(`${apiUrl}/api/get-data?email=${email}`);
             const dataResult = await dataRes.json();
             if (dataResult.success && dataResult.data) {
               await dbHelper.init();

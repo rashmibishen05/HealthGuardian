@@ -7,7 +7,8 @@ export async function syncToCloud(email: string) {
     const data = await dbHelper.exportData()
     const parsedData = JSON.parse(data)
     
-    const response = await fetch('http://localhost:3001/api/save-data', {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    const response = await fetch(`${apiUrl}/api/save-data`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
