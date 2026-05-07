@@ -62,7 +62,8 @@ node index.js
 - **Frontend**: React 19 + TypeScript
 - **Build Tool**: Vite 8
 - **Styling**: Tailwind CSS 4
-- **AI SDK**: RunAnywhere Web SDK (LLM, STT, TTS, VAD)
+- **Online AI**: Google Gemini 1.5 Flash
+- **Offline AI**: Transformers.js (Local Model)
 - **OCR**: Tesseract.js
 - **PWA**: vite-plugin-pwa + Workbox
 - **Storage**: IndexedDB for offline data persistence
@@ -143,11 +144,10 @@ The app is configured with COOP/COEP headers for:
 - SharedArrayBuffer access
 - Optimal performance for AI inference
 
-### RunAnywhere SDK Integration
-- **LLM**: Offline text generation for health queries
-- **STT**: Speech-to-text for voice input
-- **TTS**: Text-to-speech for audio responses (optional)
-- **VAD**: Voice activity detection
+### AI Hybrid Integration
+- **Online (Gemini)**: High-quality medical insights when connected to the internet
+- **Offline (Transformers.js)**: Local LLM inference (TinyLlama) that runs entirely in your browser
+- **STT**: Speech-to-text for voice input using Web Speech API
 
 ### Security & Privacy
 - All data stays on device
@@ -213,7 +213,7 @@ Health_Guardian/
 ### AI Assistant
 - **Context-Aware**: Understands health-related queries
 - **Voice-Enabled**: Supports voice input via Web Speech API
-- **Offline-First**: Uses local knowledge base with fallback to RunAnywhere LLM
+- **Hybrid Engine**: Uses Google Gemini for high-quality online answers and Transformers.js (local TinyLlama model) for private offline chat
 - **Conversation Memory**: Maintains chat history locally
 
 ## Development Notes
@@ -268,7 +268,8 @@ This project is for educational purposes. Please ensure compliance with medical 
 
 ## Credits
 
-- Built with [RunAnywhere SDK](https://docs.runanywhere.ai/)
+- Powered by [Google Gemini AI](https://deepmind.google/technologies/gemini/)
+- Local AI powered by [Transformers.js](https://huggingface.co/docs/transformers.js/)
 - OCR powered by [Tesseract.js](https://tesseract.projectnaptha.com/)
 - UI built with [Tailwind CSS](https://tailwindcss.com/)
 - PWA functionality via [vite-plugin-pwa](https://vite-pwa-org.netlify.app/)
