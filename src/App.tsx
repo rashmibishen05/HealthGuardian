@@ -2,21 +2,34 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   FaHeartbeat, FaPills, FaRobot, FaExclamationTriangle, 
-  FaFileMedical, FaBars, FaTimes, FaMoon, FaSun, FaShieldAlt
+  FaFileMedical, FaBars, FaTimes, FaMoon, FaSun, FaShieldAlt,
+  FaCalculator, FaClock, FaStethoscope, FaChartLine, FaCog
 } from 'react-icons/fa'
 import SOSEmergency from './components/SOSEmergency'
 import MedicineInfo from './components/MedicineInfo'
 import AIHealthAssistant from './components/AIHealthAssistant'
 import HealthVitals from './components/HealthVitals'
 import HealthRecords from './components/HealthRecords'
+import HealthTracker from './components/HealthTracker'
+import HealthCalculators from './components/HealthCalculators'
+import MedicationReminders from './components/MedicationReminders'
+import SymptomChecker from './components/SymptomChecker'
 import Disclaimer from './components/Disclaimer'
+import Settings from './components/Settings'
+import { useTheme } from './utils/ThemeContext'
+import Auth from './components/Auth'
+import { syncToCloud } from './utils/sync'
 
 function App() {
-  const [activeTab, setActiveTab] = useState('sos')
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('isAuthenticated') === 'true'
+  })
+  const [activeTab, setActiveTab] = useState(() => {
+    return localStorage.getItem('activeTab') || 'sos'
+  })
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
-
+  const { theme, toggleTheme } = useTheme()
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true)
@@ -24,23 +37,25 @@ function App() {
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
     
-    // Set initial theme
-    document.documentElement.classList.add('dark')
-    
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
   }, [])
 
-  const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(newTheme)
-    if (newTheme === 'dark') {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
+  useEffect(() => {
+    localStorage.setItem('isAuthenticated', isAuthenticated.toString())
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    localStorage.setItem('activeTab', activeTab)
+    // Auto-sync on tab switch if online
+    const email = localStorage.getItem('userEmail')
+    if (email && isOnline) syncToCloud(email)
+  }, [activeTab, isOnline])
+
+  const handleLogin = () => {
+    setIsAuthenticated(true)
   }
 
   const tabs = [
@@ -49,6 +64,11 @@ function App() {
     { id: 'medicine', label: 'MEDICINE INFO', icon: <FaPills />, color: 'from-emerald-600 to-teal-600' },
     { id: 'vitals', label: 'HEALTH VITALS', icon: <FaHeartbeat />, color: 'from-orange-600 to-amber-600' },
     { id: 'records', label: 'RECORDS', icon: <FaFileMedical />, color: 'from-purple-600 to-fuchsia-600' },
+    { id: 'reminders', label: 'REMINDERS', icon: <FaClock />, color: 'from-pink-600 to-rose-600' },
+    { id: 'trends', label: 'TRENDS', icon: <FaChartLine />, color: 'from-green-600 to-emerald-600' },
+    { id: 'calculators', label: 'CALCULATORS', icon: <FaCalculator />, color: 'from-cyan-600 to-blue-600' },
+    { id: 'symptoms', label: 'SYMPTOMS', icon: <FaStethoscope />, color: 'from-indigo-600 to-purple-600' },
+    { id: 'settings', label: 'SETTINGS', icon: <FaCog />, color: 'from-slate-600 to-slate-800' },
   ]
 
   const renderContent = () => {
@@ -58,8 +78,17 @@ function App() {
       case 'medicine': return <MedicineInfo />
       case 'vitals': return <HealthVitals />
       case 'records': return <HealthRecords />
+      case 'reminders': return <MedicationReminders />
+      case 'trends': return <HealthTracker />
+      case 'calculators': return <HealthCalculators />
+      case 'symptoms': return <SymptomChecker />
+      case 'settings': return <Settings />
       default: return <SOSEmergency />
     }
+  }
+
+  if (!isAuthenticated) {
+    return <Auth onLogin={handleLogin} />
   }
 
   return (
@@ -87,22 +116,22 @@ function App() {
           <div className="hidden sm:block">
             <h1 className="text-xl font-black tracking-tighter text-slate-900 dark:text-white leading-none">HEALTH GUARDIAN</h1>
             <div className="flex items-center gap-2 mt-1">
-              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-amber-500' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]'}`}></span>
+              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]'}`}></span>
               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                {isOnline ? 'Network Connected' : 'Privacy: 100% Offline'}
+                {isOnline ? 'Active: Global Medical Engine' : 'Active: Secure Offline Vault'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Desktop Tabs */}
-        <div className="hidden lg:flex items-center gap-2 bg-slate-200/50 dark:bg-white/5 p-1.5 rounded-[1.5rem] border border-slate-300 dark:border-white/10">
+        <div className="hidden xl:flex items-center gap-1 bg-slate-200/50 dark:bg-white/5 p-1.5 rounded-[1.5rem] border border-slate-300 dark:border-white/10 overflow-x-auto scrollbar-none max-w-[65vw]">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`
-                relative flex items-center gap-2 px-6 py-3 rounded-2xl text-[11px] font-black tracking-widest transition-all duration-300
+                relative flex items-center gap-1.5 px-4 py-2.5 rounded-2xl text-[10px] xl:text-[11px] font-black tracking-widest transition-all duration-300 shrink-0
                 ${activeTab === tab.id 
                   ? 'text-white' 
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/10 dark:hover:bg-white/5'

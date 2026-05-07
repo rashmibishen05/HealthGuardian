@@ -63,6 +63,29 @@ function HealthTracker() {
       value: parseFloat(v.value.split('/')[0]) || parseFloat(v.value)
     }))
 
+  const calculateHealthScore = () => {
+    if (vitals.length === 0) return 0
+    
+    let score = 100
+    const recentVitals = vitals.slice(0, 5)
+    
+    recentVitals.forEach(v => {
+      const range = vitalRanges[v.type as keyof typeof vitalRanges]
+      if (!range) return
+      
+      const val = parseFloat(v.value.split('/')[0]) || parseFloat(v.value)
+      const [min, max] = range.normal.split('-').map(parseFloat)
+      
+      if (val < min || val > max) {
+        score -= 10
+      }
+    })
+    
+    return Math.max(score, 20)
+  }
+
+  const healthScore = calculateHealthScore()
+
   return (
     <div className="space-y-6">
       <motion.div
@@ -71,6 +94,32 @@ function HealthTracker() {
         className="glass-card"
       >
         <h2 className="text-2xl font-bold text-gradient mb-6">Health Vitals Tracker</h2>
+        
+        {/* Advanced Health Score */}
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
+           <div className="md:col-span-3 glass p-6 rounded-3xl bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 border border-slate-200 dark:border-white/5 flex items-center gap-6">
+              <div className="relative w-24 h-24 flex items-center justify-center">
+                 <svg className="w-full h-full transform -rotate-90">
+                    <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-200 dark:text-slate-700" />
+                    <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={251} strokeDashoffset={251 - (251 * healthScore) / 100} className={`${healthScore > 80 ? 'text-green-500' : healthScore > 50 ? 'text-amber-500' : 'text-red-500'} transition-all duration-1000`} />
+                 </svg>
+                 <span className="absolute text-2xl font-black">{healthScore}%</span>
+              </div>
+              <div>
+                 <h4 className="text-xl font-bold">Health Wellness Score</h4>
+                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    {healthScore > 80 ? "Excellent! Your vitals are within normal range." : 
+                     healthScore > 50 ? "Good, but some vitals need attention." : 
+                     "Warning: Multiple vitals are outside normal range."}
+                 </p>
+              </div>
+           </div>
+           <div className="glass p-6 rounded-3xl bg-blue-600 text-white shadow-xl shadow-blue-600/20 flex flex-col justify-center">
+              <span className="text-[10px] font-black tracking-widest uppercase opacity-70">Total Logs</span>
+              <span className="text-4xl font-black">{vitals.length}</span>
+              <span className="text-xs font-bold mt-2">Active Tracking</span>
+           </div>
+        </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {Object.entries(vitalRanges).map(([key, info]) => (

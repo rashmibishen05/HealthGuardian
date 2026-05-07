@@ -1,26 +1,140 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { searchMedicine, type Medicine } from '../data/medicines'
+import { searchMedicine, medicinesDatabase, type Medicine } from '../data/medicines'
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { dbHelper } from '../utils/indexedDB'
+import { FaPills, FaSearch, FaCapsules, FaShieldAlt, FaSyringe, FaGlobe, FaCamera, FaExclamationTriangle, FaExchangeAlt } from 'react-icons/fa'
 import Tesseract from 'tesseract.js'
-import { FaPills, FaSearch, FaCamera, FaCapsules, FaShieldAlt, FaSyringe } from 'react-icons/fa'
+import { checkInteraction, type Interaction } from '../data/interactions'
 
 function MedicineInfo() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Medicine[]>([])
   const [selectedMedicine, setSelectedMedicine] = useState<Medicine | null>(null)
-  const [scanMode, setScanMode] = useState(false)
-  const [scanning, setScanning] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
+  const [searchingOnline, setSearchingOnline] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [isOnline] = useState(navigator.onLine)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [isScanning, setIsScanning] = useState(false)
+  
+  // Interaction Checker State
+  const [showInteraction, setShowInteraction] = useState(false)
+  const [med1, setMed1] = useState('')
+  const [med2, setMed2] = useState('')
+  const [interactionResult, setInteractionResult] = useState<Interaction | null>(null)
+  const [hasChecked, setHasChecked] = useState(false)
 
-  const handleSearch = (query: string) => {
-    setSearchQuery(query)
-    if (query.trim()) {
-      const results = searchMedicine(query)
-      setSearchResults(results)
-      if (results.length === 1) {
-        setSelectedMedicine(results[0])
+  const handleScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsScanning(true)
+    setSearchError(null)
+    setStatusMsg('🔍 Scanning medicine bottle...')
+
+    try {
+      const { data: { text } } = await Tesseract.recognize(file, 'eng', {
+        logger: m => console.log(m)
+      })
+      
+      // Basic extraction: find words that might be medicine names
+      // We'll clean the text and try to match against our database
+      const lines = text.split('\n').map(l => l.trim().toLowerCase())
+      let foundName = ''
+      
+      // Try to find a match in our database
+      for (const line of lines) {
+         if (line.length < 3) continue
+         const match = medicinesDatabase.find(m => 
+            line.includes(m.name.toLowerCase()) || 
+            m.name.toLowerCase().includes(line)
+         )
+         if (match) {
+            foundName = match.name
+            break
+         }
+      }
+
+      if (foundName) {
+        setSearchQuery(foundName)
+        handleSearch(foundName)
+        setStatusMsg('')
+      } else {
+        // If no match in DB, just use the longest line as a guess
+        const bestGuess = lines.reduce((a, b) => a.length > b.length ? a : b, '').substring(0, 30)
+        setSearchQuery(bestGuess)
+        handleSearch(bestGuess)
+        setStatusMsg('Scan complete. Searching for extracted text...')
+      }
+    } catch (err) {
+      console.error('OCR Error:', err)
+      setSearchError('Failed to scan image. Please try typing the name.')
+    } finally {
+      setIsScanning(false)
+    }
+  }
+
+  const [statusMsg, setStatusMsg] = useState('')
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setSearchQuery(val)
+    setSearchError(null)
+    if (val.length > 1) {
+      const filtered = medicinesDatabase
+        .filter(m => m.name.toLowerCase().includes(val.toLowerCase()))
+        .map(m => m.name)
+        .slice(0, 5)
+      setSuggestions(filtered)
+      
+      // Auto-search offline results
+      const results = searchMedicine(val)
+      if (results.length > 0) {
+        setSearchResults(results)
+      }
+    } else {
+      setSuggestions([])
+      setSearchResults([])
+    }
+  }
+
+  const handleSearch = async (query?: string) => {
+    const q = query !== undefined ? query : searchQuery
+    setSuggestions([]) // Clear suggestions on search
+    setSearchError(null)
+    if (q.trim()) {
+      // 1. Search Static Database
+      const staticResults = searchMedicine(q)
+      
+      // 2. Search Dynamic IndexedDB
+      const dynamicResults = await dbHelper.searchMedicine(q)
+      const mappedDynamicResults: Medicine[] = dynamicResults.map(r => ({
+        name: r.name,
+        genericName: r.genericName,
+        uses: r.uses,
+        dosage: r.dosage,
+        warnings: r.warnings,
+        sideEffects: r.sideEffects || []
+      }))
+      
+      const combinedResults = [...staticResults, ...mappedDynamicResults]
+      
+      if (combinedResults.length > 0) {
+        setSearchResults(combinedResults)
+        if (combinedResults.length === 1) setSelectedMedicine(combinedResults[0])
+      } else {
+        // Fuzzy Match Fallback (Starts With)
+        const fuzzyResults = medicinesDatabase.filter(m => 
+          m.name.toLowerCase().startsWith(q.toLowerCase().substring(0, 3))
+        )
+        if (fuzzyResults.length > 0) {
+          setSearchResults(fuzzyResults)
+        } else if (navigator.onLine) {
+          // Online fallback via Gemini
+          handleOnlineSearch(q)
+        } else {
+          setSearchResults([])
+        }
       }
     } else {
       setSearchResults([])
@@ -28,76 +142,98 @@ function MedicineInfo() {
     }
   }
 
-  const startCamera = async () => {
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
+  const handleOnlineSearch = async (query: string) => {
+    if (query.length < 3) return
+    setSearchingOnline(true)
+    setSearchError(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      })
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        streamRef.current = stream
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+      if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+        throw new Error("API Key missing")
       }
-      setScanMode(true)
-    } catch (error) {
-      console.error('Camera error:', error)
-      alert('Unable to access camera. Please allow camera permissions.')
-    }
-  }
+      const genAI = new GoogleGenerativeAI(apiKey)
+      const prompt = `You are a professional medical database API. A user is searching for "${query}".
+      1. If this query represents a valid medicine (even if misspelled like "dolo650" -> "Dolo-650"), provide its precise medical details.
+      2. If the query is NOT a medicine (e.g., "hello", "what is a dog", "fever"), set "isMedicine" to false.
+      
+      Respond STRICTLY with valid JSON matching this exact structure:
+      {
+        "isMedicine": boolean,
+        "name": "Corrected Brand or Generic Name",
+        "genericName": "Primary active ingredient",
+        "uses": "Primary medical uses",
+        "dosage": "Standard adult dosage guidelines",
+        "warnings": "Critical contraindications or warnings",
+        "sideEffects": ["effect 1", "effect 2", "effect 3"]
+      }
+      Do NOT include any markdown formatting, backticks, or extra text. ONLY raw JSON.`
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop())
-      streamRef.current = null
-    }
-    setScanMode(false)
-  }
+      let text = ""
+      try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+        const result = await model.generateContent(prompt)
+        text = result.response.text()
+      } catch (err: any) {
+        console.warn("Fallback to gemini-pro due to:", err.message)
+        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-pro" })
+        const result = await fallbackModel.generateContent(prompt)
+        text = result.response.text()
+      }
 
-  const captureAndScan = async () => {
-    if (!videoRef.current || !canvasRef.current) return
+      // Clean up markdown blocks if Gemini accidentally included them
+      let jsonStr = text.replace(/```json/gi, '').replace(/```/g, '').trim()
+      
+      // Sometimes it might start with something else, find first {
+      const firstBrace = jsonStr.indexOf('{')
+      const lastBrace = jsonStr.lastIndexOf('}')
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        jsonStr = jsonStr.substring(firstBrace, lastBrace + 1)
+      }
 
-    setScanning(true)
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
-
-    if (!context) return
-
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    context.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-    try {
-      // 100% Offline OCR Recognition
-      // Requires assets in public/tesseract/ to avoid CDN fetching
-      const { data: { text } } = await Tesseract.recognize(canvas, 'eng', {
-        workerPath: '/tesseract/worker.min.js',
-        langPath: '/tesseract/lang-data',
-        corePath: '/tesseract/tesseract-core.wasm.js',
-        logger: m => console.log('OCR Sync:', m),
-      });
-
-      console.log('Scanned text:', text)
-      setScanning(false)
-
-      // Try to extract medicine name from OCR text
-      const words = text.split(/\s+/).filter((w) => w.length > 3)
-      for (const word of words) {
-        const results = searchMedicine(word)
-        if (results.length > 0) {
-          setSearchQuery(word)
-          setSearchResults(results)
-          setSelectedMedicine(results[0])
-          stopCamera()
-          return
+      const resultData = JSON.parse(jsonStr)
+      
+      if (resultData.isMedicine === false) {
+        setSearchError(`"${query}" does not appear to be a recognized medicine. If you are asking a health question, please use the AI Assistant tab.`)
+        setSearchResults([])
+        setSelectedMedicine(null)
+      } else {
+        const medData: Medicine = {
+          name: resultData.name || query,
+          genericName: resultData.genericName || 'N/A',
+          uses: resultData.uses || 'Information unavailable.',
+          dosage: resultData.dosage || 'Consult your doctor for dosage.',
+          warnings: resultData.warnings || 'Consult your doctor before use.',
+          sideEffects: Array.isArray(resultData.sideEffects) ? resultData.sideEffects : ['Consult doctor for potential side effects.']
         }
+        
+        // Save to IndexedDB for future offline use
+        await dbHelper.addMedicine({
+          ...medData,
+          timestamp: Date.now()
+        })
+        setSearchResults([medData])
+        setSelectedMedicine(medData)
       }
-
-      alert('No medicine found in the image. Try manual search.')
-    } catch (error) {
-      console.error('OCR error:', error)
-      alert('Failed to scan image. Please try again or use manual search.')
-      setScanning(false)
+    } catch (error: any) {
+      console.error('Online search failed:', error)
+      setSearchError("Our global database is temporarily unavailable or returned invalid data. Please try again.")
+      setSearchResults([])
+    } finally {
+      setSearchingOnline(false)
     }
+  }
+
+  const handleCheckInteraction = () => {
+    if (!med1 || !med2) return
+    const result = checkInteraction(med1, med2)
+    setInteractionResult(result)
+    setHasChecked(true)
   }
 
   return (
@@ -115,65 +251,156 @@ function MedicineInfo() {
         </div>
 
         <div className="p-8">
-          {!scanMode ? (
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-1 group">
-                <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-                <input
-                  type="text"
-                  placeholder="Enter medicine name (e.g. Aspirin)..."
-                  value={searchQuery}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-lg text-slate-900 dark:text-white"
-                />
-              </div>
-              <motion.button
-                onClick={startCamera}
-                className="btn-primary flex items-center justify-center gap-2 px-8 py-4 rounded-2xl"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <FaCamera className="text-xl" />
-                <span>Scan Medicine</span>
-              </motion.button>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl bg-black aspect-video border-4 border-white/10">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 border-[2px] border-white/30 rounded-3xl pointer-events-none m-8"></div>
-                <canvas ref={canvasRef} className="hidden" />
-              </div>
+          <div className="flex gap-4 mb-2">
+            <div className="relative flex-1 group">
+              <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+              <input
+                type="text"
+                placeholder="Search any medicine (e.g. Dolo-650, Atorvastatin)..."
+                value={searchQuery}
+                onChange={handleInputChange}
+                onKeyPress={handleKeyPress}
+                className="w-full pl-12 pr-16 py-5 bg-slate-50 dark:bg-slate-800/80 border-2 border-slate-100 dark:border-slate-700 rounded-3xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all outline-none text-xl text-slate-900 dark:text-white shadow-inner"
+              />
+              
+              <label className="absolute right-4 top-1/2 -translate-y-1/2 cursor-pointer p-2 hover:bg-blue-100 dark:hover:bg-white/10 rounded-xl transition-all">
+                 {isScanning ? (
+                    <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                 ) : (
+                    <FaCamera className="text-blue-600 dark:text-blue-400 text-xl" />
+                 )}
+                 <input type="file" accept="image/*" onChange={handleScan} className="hidden" disabled={isScanning} />
+              </label>
 
-              <div className="flex gap-4">
-                <motion.button
-                  onClick={captureAndScan}
-                  disabled={scanning}
-                  className="flex-1 btn-success py-4 rounded-2xl flex items-center justify-center gap-2"
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  {scanning ? (
-                    <span className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></span>
-                  ) : <FaSearch />}
-                  <span>{scanning ? 'Analyzing Text...' : 'Analyze Label'}</span>
-                </motion.button>
-                <motion.button
-                  onClick={stopCamera}
-                  className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-8 py-4 rounded-2xl font-bold"
-                  whileHover={{ backgroundColor: "rgba(255,255,255,0.1)" }}
-                >
-                  Exit
-                </motion.button>
+              <AnimatePresence>
+                {suggestions.length > 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden"
+                  >
+                    {suggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setSearchQuery(s)
+                          handleSearch(s)
+                        }}
+                        className="w-full text-left px-6 py-3 hover:bg-blue-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-3 border-b last:border-none border-slate-100 dark:border-slate-700"
+                      >
+                        <FaCapsules className="text-slate-300 text-xs" />
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{s}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+            <button 
+              onClick={() => handleSearch()}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-10 rounded-3xl font-black shadow-xl shadow-blue-600/20 transition-all uppercase tracking-widest"
+            >
+              Search
+            </button>
+          </div>
+
+          {statusMsg && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-blue-600 dark:text-blue-400 text-xs font-bold animate-pulse">
+              {statusMsg}
+            </motion.div>
+          )}
+
+          {!searchQuery && !selectedMedicine && (
+            <div className="space-y-6">
+              <h4 className="text-xs font-black tracking-widest text-slate-400 uppercase">Browse Common Medications</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {['Dolo-650', 'Augmentin', 'Taxim-O', 'Aciloc', 'Telma-40', 'Metformin', 'Lipitor', 'Zoloft'].map(med => (
+                  <button 
+                    key={med}
+                    onClick={() => { setSearchQuery(med); handleSearch(med); }}
+                    className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-500 transition-all text-left group"
+                  >
+                    <FaCapsules className="text-slate-300 group-hover:text-blue-500 mb-2 transition-colors" />
+                    <p className="font-bold text-sm text-slate-700 dark:text-slate-200">{med}</p>
+                  </button>
+                ))}
               </div>
             </div>
           )}
-        </div>
+          </div>
+
+          <div className="mt-6 flex gap-4">
+             <button 
+                onClick={() => setShowInteraction(!showInteraction)}
+                className="flex items-center gap-2 px-6 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all border border-slate-200 dark:border-slate-700"
+             >
+                <FaExchangeAlt /> {showInteraction ? 'Close Checker' : 'Drug Interaction Checker'}
+             </button>
+          </div>
+
+          <AnimatePresence>
+             {showInteraction && (
+                <motion.div 
+                   initial={{ opacity: 0, height: 0 }}
+                   animate={{ opacity: 1, height: 'auto' }}
+                   exit={{ opacity: 0, height: 0 }}
+                   className="mt-6 p-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-3xl border border-blue-100 dark:border-blue-800/30 overflow-hidden"
+                >
+                   <h4 className="text-sm font-black text-blue-800 dark:text-blue-400 mb-4 flex items-center gap-2 uppercase tracking-widest">
+                      🛡️ Advanced Safety Checker (Offline)
+                   </h4>
+                   <div className="grid md:grid-cols-2 gap-4 mb-4">
+                      <input 
+                         type="text" 
+                         placeholder="Medicine 1 (e.g. Aspirin)" 
+                         value={med1}
+                         onChange={(e) => setMed1(e.target.value)}
+                         className="px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none"
+                      />
+                      <input 
+                         type="text" 
+                         placeholder="Medicine 2 (e.g. Warfarin)" 
+                         value={med2}
+                         onChange={(e) => setMed2(e.target.value)}
+                         className="px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold outline-none"
+                      />
+                   </div>
+                   <button 
+                      onClick={handleCheckInteraction}
+                      disabled={!med1 || !med2}
+                      className="w-full py-4 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-50"
+                   >
+                      Verify Safety
+                   </button>
+
+                   {hasChecked && (
+                      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
+                         {interactionResult ? (
+                            <div className={`p-4 rounded-2xl border flex gap-4 ${
+                               interactionResult.severity === 'high' ? 'bg-red-50 border-red-200 text-red-700 dark:bg-red-900/20 dark:border-red-800' : 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800'
+                            }`}>
+                               <FaExclamationTriangle className="text-xl shrink-0 mt-1" />
+                               <div>
+                                  <p className="font-black text-sm uppercase tracking-wide">{interactionResult.severity} RISK DETECTED</p>
+                                  <p className="text-sm font-medium mt-1 leading-relaxed">{interactionResult.warning}</p>
+                               </div>
+                            </div>
+                         ) : (
+                            <div className="p-4 bg-green-50 border border-green-200 text-green-700 dark:bg-green-900/20 dark:border-green-800 rounded-2xl flex items-center gap-3">
+                               <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">✓</div>
+                               <p className="text-sm font-bold">No major interactions found in our offline database for these medications.</p>
+                            </div>
+                         )}
+                         <p className="text-[10px] text-slate-400 mt-3 text-center uppercase tracking-widest font-medium italic">
+                            ⚠️ Always consult a doctor. This tool is for informational purposes only.
+                         </p>
+                      </motion.div>
+                   )}
+                </motion.div>
+             )}
+          </AnimatePresence>
+
       </div>
 
       {/* Suggested Results */}
@@ -218,8 +445,15 @@ function MedicineInfo() {
               <FaSearch className="rotate-45" />
             </button>
             <div className="flex items-center gap-4 mb-4">
-              <span className="px-3 py-1 bg-white/20 rounded-lg text-xs font-bold uppercase tracking-widest backdrop-blur-md border border-white/10">Prescription Med</span>
+              <span className="px-3 py-1 bg-white/20 rounded-lg text-xs font-bold uppercase tracking-widest backdrop-blur-md border border-white/10">
+                {searchingOnline ? 'Searching Global DB...' : 'Verified Info'}
+              </span>
               {selectedMedicine.genericName && <span className="text-blue-200 text-sm font-medium">#{selectedMedicine.genericName}</span>}
+              {!medicinesDatabase.find(m => m.name === selectedMedicine.name) && (
+                <span className="flex items-center gap-1 px-3 py-1 bg-green-500/30 rounded-lg text-[10px] font-black uppercase tracking-widest border border-green-400">
+                  <FaGlobe /> Online Source
+                </span>
+              )}
             </div>
             <h3 className="text-4xl font-black mb-2">{selectedMedicine.name}</h3>
             <p className="text-lg text-blue-100 font-medium opacity-80 leading-relaxed max-w-2xl">{selectedMedicine.uses}</p>
@@ -261,7 +495,7 @@ function MedicineInfo() {
                   <h4 className="text-xl font-bold text-slate-800 dark:text-white">Possible Side Effects</h4>
                 </div>
                 <ul className="grid grid-cols-1 gap-2">
-                  {selectedMedicine.sideEffects.map((effect, idx) => (
+                  {(selectedMedicine.sideEffects || []).map((effect, idx) => (
                     <li key={idx} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 text-slate-700 dark:text-slate-300">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                       <span className="text-sm font-medium">{effect}</span>
@@ -284,11 +518,41 @@ function MedicineInfo() {
         </motion.div>
       )}
 
-      {searchQuery && searchResults.length === 0 && (
+      {searchQuery && searchResults.length === 0 && !searchingOnline && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-20 bg-white/50 dark:bg-slate-800/30 rounded-[3rem] border-2 border-dashed border-slate-200 dark:border-slate-800 shadow-inner">
            <FaPills className="mx-auto text-6xl text-slate-200 dark:text-slate-700 mb-4" />
-           <p className="text-slate-600 dark:text-slate-400 text-xl font-bold text-center py-20">Medicine not found in offline DB</p>
-           <p className="text-slate-500 dark:text-slate-400 text-sm text-center mt-1">Try a different name or use the AI Assistant for general advice.</p>
+           <p className="text-slate-600 dark:text-slate-400 text-xl font-bold text-center uppercase tracking-widest">No exact match found</p>
+           <p className="text-slate-500 dark:text-slate-400 text-sm text-center mt-2 max-w-md mx-auto leading-relaxed">
+             We couldn't find offline data for "{searchQuery}". Try our Global AI search for real-time information and spelling correction.
+           </p>
+           {isOnline && (
+             <div className="mt-8 flex flex-col items-center gap-4">
+                <button 
+                  onClick={() => handleOnlineSearch(searchQuery)}
+                  className="flex items-center gap-2 px-10 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-2xl shadow-blue-600/20 hover:scale-105 transition-all uppercase tracking-widest text-xs"
+                >
+                  <FaGlobe /> Search Global AI Database
+                </button>
+             </div>
+           )}
+        </motion.div>
+      )}
+
+      {searchingOnline && (
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-6 shadow-xl" />
+          <p className="text-xl font-black text-slate-700 dark:text-slate-300 animate-pulse tracking-widest uppercase">Consulting Global Medical Intelligence...</p>
+          <p className="text-sm text-slate-400 mt-2">Fetching professional clinical data from global registries</p>
+        </div>
+      )}
+
+      {searchError && !searchingOnline && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-red-50 dark:bg-red-900/20 p-6 rounded-3xl border border-red-200 dark:border-red-800/30 text-center">
+          <FaShieldAlt className="text-red-500 text-4xl mx-auto mb-4" />
+          <h4 className="text-red-700 dark:text-red-400 font-bold text-lg mb-2">Search Advisory</h4>
+          <p className="text-red-600/80 dark:text-red-400/80 text-sm font-medium leading-relaxed max-w-xl mx-auto">
+            {searchError}
+          </p>
         </motion.div>
       )}
     </div>

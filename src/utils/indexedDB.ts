@@ -5,9 +5,11 @@ const DB_VERSION = 2 // Incremented for new stores
 export interface MedicineRecord {
   id?: number
   name: string
+  genericName?: string
   uses: string
   dosage: string
   warnings: string
+  sideEffects?: string[]
   timestamp: number
 }
 
@@ -152,9 +154,12 @@ class IndexedDBHelper {
       const request = store.getAll()
 
       request.onsuccess = () => {
-        const results = (request.result as MedicineRecord[]).filter((med) =>
-          med.name.toLowerCase().includes(searchTerm.toLowerCase())
-        )
+        const query = searchTerm.toLowerCase().replace(/[^a-z0-9]/g, '')
+        const results = (request.result as MedicineRecord[]).filter((med) => {
+          const name = med.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+          const generic = (med.genericName || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+          return name.includes(query) || generic.includes(query)
+        })
         resolve(results)
       }
       request.onerror = () => reject(request.error)
@@ -227,7 +232,7 @@ class IndexedDBHelper {
     })
   }
 
-  async getChatHistory(): Promise<Array<{ role: string; content: string }>> {
+  async getChatHistory(): Promise<Array<{ role: string; content: string; timestamp: number }>> {
     return new Promise((resolve, reject) => {
       if (!this.db) {
         reject(new Error('Database not initialized'))
@@ -418,6 +423,57 @@ class IndexedDBHelper {
       request.onsuccess = () => resolve()
       request.onerror = () => reject(request.error)
     })
+  }
+
+  // Backup & Restore
+  async exportData(): Promise<string> {
+    if (!this.db) throw new Error('Database not initialized')
+    
+    const stores = ['medicines', 'emergencyContacts', 'chatHistory', 'healthVitals', 'medicationReminders', 'healthRecords']
+    const exportObj: any = {}
+
+    for (const storeName of stores) {
+      const transaction = this.db.transaction([storeName], 'readonly')
+      const store = transaction.objectStore(storeName)
+      const data = await new Promise<any[]>((resolve) => {
+        const req = store.getAll()
+        req.onsuccess = () => resolve(req.result)
+      })
+      exportObj[storeName] = data
+    }
+
+    return JSON.stringify(exportObj)
+  }
+
+  async importData(jsonString: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized')
+    
+    const importObj = JSON.parse(jsonString)
+    const stores = Object.keys(importObj)
+
+    for (const storeName of stores) {
+      const transaction = this.db.transaction([storeName], 'readwrite')
+      const store = transaction.objectStore(storeName)
+      
+      // Clear existing
+      store.clear()
+      
+      // Add new
+      for (const item of importObj[storeName]) {
+        delete item.id // Let autoIncrement handle it
+        store.add(item)
+      }
+    }
+  }
+
+  async clearAllData(): Promise<void> {
+     if (!this.db) throw new Error('Database not initialized')
+     const stores = ['medicines', 'emergencyContacts', 'chatHistory', 'healthVitals', 'medicationReminders', 'healthRecords']
+     for (const storeName of stores) {
+        const transaction = this.db.transaction([storeName], 'readwrite')
+        const store = transaction.objectStore(storeName)
+        store.clear()
+     }
   }
 }
 

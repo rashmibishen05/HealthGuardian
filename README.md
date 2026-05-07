@@ -2,7 +2,20 @@
 
 **Live Demo:** [https://health-guardian-gilt.vercel.app/](https://health-guardian-gilt.vercel.app/)
 
-An offline-first Progressive Web App (PWA) health assistant built with React, TypeScript, Vite, and RunAnywhere SDK.
+An offline-first Progressive Web App (PWA) health assistant with real-time OTP verification, AI diagnostics, and emergency response system.
+
+## 🔐 Authentication (Real-time OTP)
+This project uses a dedicated Node.js backend to provide secure, real-time OTP verification via Nodemailer.
+- **Secure**: OTPs are generated and verified on the server.
+- **Reliable**: Direct SMTP connection to Gmail.
+- **Rate Limited**: Protects against brute-force attacks.
+
+To run the authentication server:
+```bash
+cd server
+npm install
+node index.js
+```
 
 ## Features
 
@@ -157,9 +170,13 @@ In case of emergency, always call your local emergency number (911 in the US).
 ## Project Structure
 
 ```
-Health_Hub/
-├── src/
+Health_Guardian/
+├── server/                  # Node.js Nodemailer Backend
+│   ├── index.js             # OTP Generation & Dispatch
+│   └── package.json         # Backend Dependencies
+├── src/                     # React Frontend
 │   ├── components/
+│   │   ├── Auth.tsx         # Real-time Secure Login
 │   │   ├── AIHealthAssistant.tsx    # AI chatbot component
 │   │   ├── Disclaimer.tsx           # Medical disclaimer
 │   │   ├── MedicineInfo.tsx         # Medicine search & OCR

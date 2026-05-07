@@ -20,6 +20,9 @@ export const symptomCheckerTree: SymptomCheckerNode[] = [
       { answer: 'Headache', nextId: 'headache' },
       { answer: 'Cough', nextId: 'cough' },
       { answer: 'Abdominal Pain', nextId: 'abdominal' },
+      { answer: 'Back Pain', nextId: 'back_pain' },
+      { answer: 'Skin Rash/Itching', nextId: 'skin_issue' },
+      { answer: 'Urinary Issues', nextId: 'urinary_issue' },
       { answer: 'Other', nextId: 'other' }
     ]
   },
@@ -192,6 +195,201 @@ export const symptomCheckerTree: SymptomCheckerNode[] = [
     severity: 'low',
     possibleConditions: ['Various'],
     advice: 'Based on your symptoms, consider seeing a healthcare provider for proper evaluation. Call 911 if symptoms are severe or life-threatening.',
+    nextQuestions: []
+  },
+  {
+    id: 'recent_fever',
+    question: 'Are you taking any medications?',
+    symptoms: ['fever', 'moderate', 'recent'],
+    severity: 'low',
+    possibleConditions: ['Early Viral Infection', 'Influenza'],
+    advice: 'Monitor for new symptoms. Stay hydrated. Rest.',
+    nextQuestions: []
+  },
+  {
+    id: 'persistent_fever',
+    question: 'Do you have a rash or stiff neck?',
+    symptoms: ['fever', 'moderate', 'persistent'],
+    severity: 'high',
+    possibleConditions: ['Bacterial Infection', 'Dengue', 'Typhoid'],
+    advice: 'Consult a doctor today. If rash or stiff neck develops, go to ER immediately.',
+    nextQuestions: []
+  },
+  {
+    id: 'long_fever',
+    question: 'Fever for more than 5 days requires evaluation.',
+    symptoms: ['fever', 'moderate', 'long'],
+    severity: 'high',
+    possibleConditions: ['Chronic Infection', 'Autoimmune Condition'],
+    advice: 'Schedule an urgent appointment with your primary care physician.',
+    nextQuestions: []
+  },
+  {
+    id: 'left_chest',
+    question: 'Is the pain sharp or dull?',
+    symptoms: ['chest_pain', 'left'],
+    severity: 'emergency',
+    possibleConditions: ['Heart Attack', 'Angina', 'Pleurisy'],
+    advice: 'Left-sided chest pain is high risk. Call 911 immediately.',
+    nextQuestions: []
+  },
+  {
+    id: 'right_chest',
+    question: 'Does the pain increase with deep breaths?',
+    symptoms: ['chest_pain', 'right'],
+    severity: 'high',
+    possibleConditions: ['Pneumonia', 'Pleurisy', 'Muscle Strain'],
+    advice: 'See a doctor urgently for a physical exam and possible chest X-ray.',
+    nextQuestions: []
+  },
+  {
+    id: 'upper_right_abd',
+    question: 'Is the pain worse after eating fatty foods?',
+    symptoms: ['abdominal_pain', 'upper_right'],
+    severity: 'medium',
+    possibleConditions: ['Gallstones', 'Liver Issues'],
+    advice: 'Consult a doctor. Avoid heavy, fatty meals.',
+    nextQuestions: []
+  },
+  {
+    id: 'upper_left_abd',
+    question: 'Any history of stomach issues?',
+    symptoms: ['abdominal_pain', 'upper_left'],
+    severity: 'medium',
+    possibleConditions: ['Gastritis', 'Spleen Issue'],
+    advice: 'Consult a doctor if pain persists or worsens.',
+    nextQuestions: []
+  },
+  {
+    id: 'lower_left_abd',
+    question: 'Any changes in bowel habits?',
+    symptoms: ['abdominal_pain', 'lower_left'],
+    severity: 'medium',
+    possibleConditions: ['Diverticulitis', 'IBS', 'Constipation'],
+    advice: 'Increase fiber and fluids. See a doctor if pain is sharp or accompanied by fever.',
+    nextQuestions: []
+  },
+  {
+    id: 'central_abd',
+    question: 'Is there bloating or gas?',
+    symptoms: ['abdominal_pain', 'central'],
+    severity: 'low',
+    possibleConditions: ['Indigestion', 'Gastroenteritis', 'Bloating'],
+    advice: 'Try light meals. Stay hydrated. See doctor if pain becomes localized or severe.',
+    nextQuestions: []
+  },
+  {
+    id: 'back_pain',
+    question: 'Where is the pain located and is there any numbness?',
+    symptoms: ['back_pain'],
+    advice: 'Back pain assessment in progress.',
+    nextQuestions: [
+      { answer: 'Upper back / Neck', nextId: 'upper_back' },
+      { answer: 'Lower back (no numbness)', nextId: 'lower_back_simple' },
+      { answer: 'Lower back with leg numbness/weakness', nextId: 'back_emergency' }
+    ]
+  },
+  {
+    id: 'upper_back',
+    question: 'Is it related to posture or sudden movement?',
+    symptoms: ['back_pain', 'upper'],
+    severity: 'low',
+    possibleConditions: ['Muscle Strain', 'Poor Posture'],
+    advice: 'Improve ergonomics, gentle stretching, use heat packs.',
+    nextQuestions: []
+  },
+  {
+    id: 'lower_back_simple',
+    question: 'Pain when moving or at rest?',
+    symptoms: ['back_pain', 'lower'],
+    severity: 'medium',
+    possibleConditions: ['Lumbar Strain', 'Sciatica (mild)'],
+    advice: 'Stay active, avoid heavy lifting, use firm mattress. See doctor if pain lasts >2 weeks.',
+    nextQuestions: []
+  },
+  {
+    id: 'back_emergency',
+    question: 'Are you experiencing loss of bowel or bladder control?',
+    symptoms: ['back_pain', 'emergency'],
+    severity: 'emergency',
+    possibleConditions: ['Cauda Equina Syndrome', 'Severe Disc Herniation'],
+    advice: 'SEEK IMMEDIATE MEDICAL ATTENTION. Go to ER immediately.',
+    nextQuestions: []
+  },
+  {
+    id: 'skin_issue',
+    question: 'What does the rash look like?',
+    symptoms: ['rash'],
+    advice: 'Skin assessment in progress.',
+    nextQuestions: [
+      { answer: 'Red, itchy, dry patches', nextId: 'eczema_check' },
+      { answer: 'Hives / Welts (sudden)', nextId: 'allergic_rash' },
+      { answer: 'Blisters / Painful rash', nextId: 'shingles_check' }
+    ]
+  },
+  {
+    id: 'eczema_check',
+    question: 'Is it chronic or recurring?',
+    symptoms: ['rash', 'itchy'],
+    severity: 'low',
+    possibleConditions: ['Eczema', 'Contact Dermatitis'],
+    advice: 'Moisturize frequently, avoid harsh soaps, use hydrocortisone cream.',
+    nextQuestions: []
+  },
+  {
+    id: 'allergic_rash',
+    question: 'Are you having difficulty breathing or swelling of face/lips?',
+    symptoms: ['rash', 'sudden'],
+    severity: 'emergency',
+    possibleConditions: ['Anaphylaxis', 'Severe Allergic Reaction'],
+    advice: 'If breathing is difficult, CALL 911 IMMEDIATELY. Use EpiPen if available.',
+    nextQuestions: []
+  },
+  {
+    id: 'shingles_check',
+    question: 'Is the rash in a single stripe on one side of the body?',
+    symptoms: ['rash', 'painful'],
+    severity: 'medium',
+    possibleConditions: ['Shingles', 'Herpes Zoster'],
+    advice: 'See a doctor within 72 hours for antiviral medication. Keep rash covered.',
+    nextQuestions: []
+  },
+  {
+    id: 'urinary_issue',
+    question: 'What is the main problem?',
+    symptoms: ['urinary'],
+    advice: 'Urinary assessment in progress.',
+    nextQuestions: [
+      { answer: 'Burning / Frequent urge', nextId: 'uti_check' },
+      { answer: 'Difficulty starting / Weak flow', nextId: 'prostate_check' },
+      { answer: 'Blood in urine', nextId: 'urinary_emergency' }
+    ]
+  },
+  {
+    id: 'uti_check',
+    question: 'Do you have fever or back pain?',
+    symptoms: ['urinary', 'burning'],
+    severity: 'medium',
+    possibleConditions: ['UTI', 'Cystitis'],
+    advice: 'Drink plenty of water. See a doctor for antibiotics. If fever develops, see doctor urgently.',
+    nextQuestions: []
+  },
+  {
+    id: 'prostate_check',
+    question: 'Are you over 50 years old?',
+    symptoms: ['urinary', 'flow'],
+    severity: 'medium',
+    possibleConditions: ['BPH (Enlarged Prostate)', 'Prostatitis'],
+    advice: 'Consult a urologist for evaluation and possible medication.',
+    nextQuestions: []
+  },
+  {
+    id: 'urinary_emergency',
+    question: 'Blood in urine requires medical evaluation.',
+    symptoms: ['urinary', 'blood'],
+    severity: 'high',
+    possibleConditions: ['Bladder Stone', 'Infection', 'Tumor'],
+    advice: 'Schedule an urgent appointment with a healthcare provider.',
     nextQuestions: []
   }
 ]

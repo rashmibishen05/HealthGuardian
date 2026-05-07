@@ -5,7 +5,7 @@ import { getNearbyHospitals, type Hospital, hospitals, calculateDistance } from 
 import { firstAidInstructions } from '../data/firstAid'
 import {
   FaHospital, FaHospitalAlt, FaPhoneAlt, FaHeartbeat, FaShieldAlt,
-  FaMapMarkerAlt, FaTrash, FaPlus, FaCopy, FaShare, FaCheck,
+  FaMapMarkerAlt, FaTrash, FaPlus, FaCopy, FaShare, FaCheck, FaExternalLinkAlt, FaGlobe, FaMap,
 } from 'react-icons/fa'
 
 // =====================================================================
@@ -26,15 +26,22 @@ function SOSEmergency() {
   const [loading, setLoading] = useState(false)
   const [sosActive, setSosActive] = useState(false)
   const [locationStatus, setLocationStatus] = useState<string>('Tap "Find Nearby" to detect your GPS location')
+  const [currentAddress, setCurrentAddress] = useState<string | null>(null)
+  const [currentTime, setCurrentTime] = useState(new Date())
   const [sosLog, setSosLog] = useState<string[]>([])
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [showShareModal, setShowShareModal] = useState(false)
   const [shareData, setShareData] = useState<{ title: string; text: string; phone: string } | null>(null)
+  const [showLiveMap, setShowLiveMap] = useState(false)
+  const [isOnline] = useState(navigator.onLine)
 
   const [newContact, setNewContact] = useState({ name: '', phone: '', email: '', relationship: '' })
 
   useEffect(() => {
     dbHelper.init().then(() => loadEmergencyContacts())
+    
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
   }, [])
 
   const loadEmergencyContacts = async () => {
@@ -60,11 +67,19 @@ function SOSEmergency() {
         const { latitude, longitude, accuracy } = position.coords
         const loc = { lat: latitude, lon: longitude, accuracy }
         setLocation(loc)
-        // Search within 50km radius
+        
+        // Initial offline search
         const nearby = getNearbyHospitals(latitude, longitude, 50)
         setNearbyHospitals(nearby)
+        
         const accStr = accuracy ? ` (±${Math.round(accuracy)}m)` : ''
         setLocationStatus(`✅ ${latitude.toFixed(5)}, ${longitude.toFixed(5)}${accStr}`)
+        
+        // If online, upgrade to real-time AI search
+        if (navigator.onLine) {
+          fetchRealTimeHospitals(latitude, longitude)
+        }
+        
         setLoading(false)
       },
       (error) => {
@@ -78,6 +93,48 @@ function SOSEmergency() {
       },
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
     )
+  }
+
+  const fetchRealTimeHospitals = async (lat: number, lon: number) => {
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+      if (!apiKey || apiKey === 'your_gemini_api_key_here') return
+
+      const genAI = new (await import('@google/generative-ai')).GoogleGenerativeAI(apiKey)
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+
+      // 1. Get Address via Reverse Geocoding
+      const addressPrompt = `Identify the exact location/address for coordinates: ${lat}, ${lon}. Just return the short address string (City, Area).`
+      const addressResult = await model.generateContent(addressPrompt)
+      setCurrentAddress(addressResult.response.text().trim())
+
+      // 2. Get Real-time Nearby Hospitals
+      const hospitalPrompt = `Find 5 real, major hospitals near coordinates ${lat}, ${lon}. 
+      Include their real phone numbers and approximate coordinates.
+      Respond ONLY with a JSON array: [{"name": string, "address": string, "phone": string, "latitude": number, "longitude": number}]. 
+      No markdown, no text.`
+      
+      const result = await model.generateContent(hospitalPrompt)
+      const text = result.response.text().replace(/```json|```/gi, '').trim()
+      const realHospitals = JSON.parse(text)
+
+      const formattedHospitals = realHospitals.map((h: any, i: number) => ({
+        id: 9000 + i,
+        ...h,
+        distance: calculateDistance(lat, lon, h.latitude, h.longitude),
+        services: ['24/7 Emergency', 'Real-time AI Found'],
+        emergency247: true
+      })).sort((a: any, b: any) => a.distance - b.distance)
+
+      setNearbyHospitals(prev => {
+        // Merge with existing but prioritize nearest
+        const combined = [...prev, ...formattedHospitals]
+        const unique = Array.from(new Map(combined.map(item => [item.name, item])).values())
+        return unique.sort((a, b) => a.distance - b.distance).slice(0, 8)
+      })
+    } catch (err) {
+      console.error('Real-time hospital search failed:', err)
+    }
   }
 
   // Copy phone number to clipboard
@@ -329,8 +386,22 @@ function SOSEmergency() {
           <div className="absolute top-0 right-0 p-8 opacity-10">
             <FaHeartbeat className="text-[120px] rotate-12" />
           </div>
-          <h2 className="text-3xl font-black tracking-tight mb-1">🚨 EMERGENCY ASSIST</h2>
-          <p className="text-red-100 text-sm opacity-80 mb-3">One-tap SOS • Works on mobile after deployment</p>
+          <div className="flex flex-col gap-2">
+            <h2 className="text-3xl font-black tracking-tight mb-1">🚨 EMERGENCY ASSIST</h2>
+            <div className="flex items-center gap-4">
+              <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20">
+                <p className="text-[10px] uppercase tracking-widest font-bold opacity-70">Current Time</p>
+                <p className="text-xl font-black">{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>
+              </div>
+              {currentAddress && (
+                <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20">
+                  <p className="text-[10px] uppercase tracking-widest font-bold opacity-70">Live Location</p>
+                  <p className="text-sm font-bold truncate max-w-[150px]">{currentAddress}</p>
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="text-red-100 text-sm opacity-80 mt-3 mb-3">One-tap SOS • AI Powered Real-time Emergency Response</p>
           {locationStatus && (
             <span className={`text-xs font-bold inline-block px-3 py-1 rounded-full ${
               locationStatus.startsWith('✅')
@@ -536,46 +607,73 @@ function SOSEmergency() {
             <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <FaHospital className="text-red-500" /> Nearby Hospitals
             </h3>
-            <button
-              onClick={getLocation}
-              disabled={loading}
-              className="btn-success flex items-center gap-2 py-2 px-4 text-xs font-bold rounded-xl"
-            >
-              {loading ? (
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <FaMapMarkerAlt />
+            <div className="flex gap-2">
+              {isOnline && (
+                <button
+                  onClick={() => setShowLiveMap(!showLiveMap)}
+                  className="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 p-2 rounded-xl border border-blue-200 dark:border-blue-800/20 hover:bg-blue-200 transition-all"
+                  title="Toggle Live Map"
+                >
+                  <FaMap />
+                </button>
               )}
-              {loading ? 'Locating...' : 'Find Nearby'}
-            </button>
+              <button
+                onClick={getLocation}
+                disabled={loading}
+                className="btn-success flex items-center gap-2 py-2 px-4 text-xs font-bold rounded-xl"
+              >
+                {loading ? (
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <FaMapMarkerAlt />
+                )}
+                {loading ? 'Locating...' : 'Find Nearby'}
+              </button>
+            </div>
           </div>
 
           <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 mb-4">
-            📍 GPS works offline — uses your device's built-in satellite navigation. Tap "Find Nearby" to detect hospitals within <strong>50 km</strong>.
+            📍 {isOnline ? 'Connected to Live Maps' : 'Offline Mode Active'} — uses high-precision GPS to find hospitals.
           </p>
 
-          <div className="space-y-3 max-h-[480px] overflow-y-auto pr-1">
+          <AnimatePresence>
+            {showLiveMap && location && isOnline && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 300 }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mb-4 rounded-2xl overflow-hidden border-2 border-slate-200 dark:border-slate-800"
+              >
+                <iframe
+                  title="Live Hospital Map"
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  src={`https://www.google.com/maps/embed/v1/search?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&q=hospitals+near+me&center=${location.lat},${location.lon}&zoom=14`}
+                  className="bg-slate-100"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {isOnline && (
+            <a
+              href={`https://www.google.com/maps/search/hospitals+near+me/@${location?.lat || ''},${location?.lon || ''},14z`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-3 mb-4 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-2xl font-black text-xs border-2 border-dashed border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-all"
+            >
+              <FaGlobe /> SEARCH ON REAL-TIME GOOGLE MAPS
+            </a>
+          )}
+
+          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
             {nearbyHospitals.length === 0 ? (
               <div className="text-center py-10 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
                 <FaHospitalAlt className="mx-auto text-4xl text-slate-300 dark:text-slate-600 mb-3" />
                 <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">
                   {location ? 'No hospitals found within 50km' : 'Tap "Find Nearby" to locate hospitals'}
                 </p>
-                {location && (
-                  <button
-                    onClick={() => {
-                      // Show 5 closest hospitals regardless of distance
-                      const closest = hospitals
-                        .map(h => ({ ...h, distance: calculateDistance(location.lat, location.lon, h.latitude, h.longitude) }))
-                        .sort((a, b) => a.distance - b.distance)
-                        .slice(0, 8)
-                      setNearbyHospitals(closest)
-                    }}
-                    className="mt-3 text-blue-500 dark:text-blue-400 text-sm font-bold hover:underline"
-                  >
-                    Show 8 closest hospitals →
-                  </button>
-                )}
               </div>
             ) : (
               nearbyHospitals.map(hospital => (
@@ -587,37 +685,32 @@ function SOSEmergency() {
                 >
                   <div className="flex justify-between items-start mb-1">
                     <h4 className="font-bold text-slate-900 dark:text-white text-sm pr-2 leading-tight">{hospital.name}</h4>
-                    <span className="text-[10px] font-black bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-lg shrink-0">
-                      {hospital.distance.toFixed(1)} km
-                    </span>
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className="text-[10px] font-black bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-lg">
+                        {hospital.distance.toFixed(1)} km
+                      </span>
+                      <span className="text-[8px] font-bold text-green-600 dark:text-green-400 mt-1">
+                        ⏱️ ~{Math.round(hospital.distance * 2 + 5)} mins
+                      </span>
+                    </div>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">{hospital.address}</p>
                   <div className="flex items-center gap-2">
-                    {/* Call hospital - works on mobile */}
                     <a
                       href={`tel:${hospital.phone.replace(/[-\s]/g, '')}`}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl font-bold text-xs border border-green-100 dark:border-green-800/30 hover:bg-green-100 transition-all"
                     >
                       <FaPhoneAlt className="text-[10px]" /> {hospital.phone}
                     </a>
-                    {/* Map link: opens Google Maps app on Android/iOS. Coords shown as text fallback */}
                     <a
-                      href={`https://maps.google.com/?q=${hospital.latitude},${hospital.longitude}&ll=${hospital.latitude},${hospital.longitude}&z=15`}
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${hospital.latitude},${hospital.longitude}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="py-2 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-xs border border-blue-100 dark:border-blue-800/30 hover:bg-blue-100 transition-all"
-                      title={`GPS: ${hospital.latitude}, ${hospital.longitude}`}
+                      className="py-2 px-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-xl font-bold text-xs border border-blue-100 dark:border-blue-800/30 hover:bg-blue-100 transition-all flex items-center gap-2"
                     >
-                      📍 Navigate
+                      <FaExternalLinkAlt className="text-[10px]" /> Navigate
                     </a>
-                    {hospital.emergency247 && (
-                      <span className="text-[9px] font-black bg-red-500 text-white px-2 py-1 rounded-lg">24/7</span>
-                    )}
                   </div>
-                  {/* Always show coordinates as text — works 100% offline */}
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 font-mono">
-                    📌 GPS: {hospital.latitude.toFixed(4)}, {hospital.longitude.toFixed(4)}
-                  </p>
                 </motion.div>
               ))
             )}
