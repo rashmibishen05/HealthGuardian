@@ -41,8 +41,122 @@ function SOSEmergency() {
     dbHelper.init().then(() => loadEmergencyContacts())
     
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    
+    // Auto-load last known location from storage
+    const savedLoc = localStorage.getItem('lastLocation')
+    const savedAddr = localStorage.getItem('lastAddress')
+    if (savedLoc) setLocation(JSON.parse(savedLoc))
+    if (savedAddr) setCurrentAddress(savedAddr)
+
+    // Auto-start GPS tracking
+    startLocationTracking()
+
     return () => clearInterval(timer)
   }, [])
+
+  const startLocationTracking = () => {
+    if (!('geolocation' in navigator)) {
+      setLocationStatus('❌ GPS not supported')
+      return
+    }
+
+    setLocationStatus('📡 Initializing GPS...')
+    
+    // Initial quick fix
+    navigator.geolocation.getCurrentPosition(
+      (pos) => handlePositionUpdate(pos, true),
+      (err) => console.warn('Initial GPS failed:', err),
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+
+    // Continuous watch
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => handlePositionUpdate(pos, false),
+      (err) => {
+        console.error('GPS Watch Error:', err)
+        if (err.code === 1) setLocationStatus('❌ GPS Permission Denied')
+      },
+      { enableHighAccuracy: true, maximumAge: 10000 }
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
+  }
+
+  const handlePositionUpdate = async (position: GeolocationPosition, isInitial: boolean) => {
+    const { latitude, longitude, accuracy } = position.coords
+    const loc = { lat: latitude, lon: longitude, accuracy }
+    
+    setLocation(loc)
+    localStorage.setItem('lastLocation', JSON.stringify(loc))
+    
+    // 1. Get Static + Cached Hospitals
+    try {
+      await dbHelper.init()
+      const cached = await dbHelper.getCachedHospitals()
+      const staticHospitals = getNearbyHospitals(latitude, longitude, 50)
+      
+      const mappedCached = cached.map(h => ({
+        ...h,
+        id: h.id!,
+        distance: calculateDistance(latitude, longitude, h.latitude, h.longitude)
+      }))
+
+      const merged = [...staticHospitals, ...mappedCached]
+      const unique = merged.filter((v, i, a) => a.findIndex(t => t.name === v.name) === i)
+      setNearbyHospitals(unique.sort((a, b) => a.distance - b.distance))
+    } catch (err) {
+      console.error("Local hospital fetch failed", err)
+      setNearbyHospitals(getNearbyHospitals(latitude, longitude, 50))
+    }
+    
+    const accStr = accuracy ? ` (±${Math.round(accuracy)}m)` : ''
+    setLocationStatus(`✅ ${latitude.toFixed(5)}, ${longitude.toFixed(5)}${accStr}`)
+
+    if (navigator.onLine && (isInitial || Math.random() > 0.8)) { 
+      fetchRealTimeAddress(latitude, longitude)
+      fetchRealTimeHospitals(latitude, longitude)
+      fetchHospitalsFromOSM(latitude, longitude)
+    }
+  }
+
+  const fetchRealTimeAddress = async (lat: number, lon: number) => {
+    try {
+      // Use Nominatim (OSM) for free reverse geocoding if online
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+      const data = await res.json()
+      if (data && data.display_name) {
+        const shortAddr = data.address.city || data.address.town || data.address.suburb || 'Nearby Location'
+        const fullAddr = `${shortAddr}, ${data.address.state || data.address.country}`
+        setCurrentAddress(fullAddr)
+        localStorage.setItem('lastAddress', fullAddr)
+      }
+    } catch (e) {
+      // Fallback to Gemini if Nominatim fails or for more detail
+      fetchAddressWithAI(lat, lon)
+    }
+  }
+
+  const fetchAddressWithAI = async (lat: number, lon: number) => {
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+      if (!apiKey) return
+      const genAI = new (await import('@google/generative-ai')).GoogleGenerativeAI(apiKey)
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+      const addressPrompt = `Identify the exact location/address for coordinates: ${lat}, ${lon}. Just return a short address (City, Area).`
+      const result = await model.generateContent(addressPrompt)
+      const addr = result.response.text().trim()
+      setCurrentAddress(addr)
+      localStorage.setItem('lastAddress', addr)
+    } catch (err) {
+      console.error('AI address fetch failed:', err)
+    }
+  }
+
+  const getLocation = () => {
+    setLoading(true)
+    startLocationTracking()
+    setTimeout(() => setLoading(false), 2000)
+  }
 
   const loadEmergencyContacts = async () => {
     try {
@@ -53,48 +167,6 @@ function SOSEmergency() {
     }
   }
 
-  const getLocation = () => {
-    setLoading(true)
-    setLocationStatus('📡 Getting your GPS location...')
-    if (!('geolocation' in navigator)) {
-      setLocationStatus('❌ GPS not supported by this browser')
-      setLoading(false)
-      return
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude, accuracy } = position.coords
-        const loc = { lat: latitude, lon: longitude, accuracy }
-        setLocation(loc)
-        
-        // Initial offline search
-        const nearby = getNearbyHospitals(latitude, longitude, 50)
-        setNearbyHospitals(nearby)
-        
-        const accStr = accuracy ? ` (±${Math.round(accuracy)}m)` : ''
-        setLocationStatus(`✅ ${latitude.toFixed(5)}, ${longitude.toFixed(5)}${accStr}`)
-        
-        // If online, upgrade to real-time AI search
-        if (navigator.onLine) {
-          fetchRealTimeHospitals(latitude, longitude)
-        }
-        
-        setLoading(false)
-      },
-      (error) => {
-        setLoading(false)
-        const messages: Record<number, string> = {
-          1: '❌ GPS permission denied. Enable location in browser settings.',
-          2: '❌ GPS signal unavailable. Try outdoors or near a window.',
-          3: '❌ GPS timed out. Try again.',
-        }
-        setLocationStatus(messages[error.code] || '❌ GPS error. Try again.')
-      },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
-    )
-  }
-
   const fetchRealTimeHospitals = async (lat: number, lon: number) => {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY
@@ -103,10 +175,6 @@ function SOSEmergency() {
       const genAI = new (await import('@google/generative-ai')).GoogleGenerativeAI(apiKey)
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
 
-      // 1. Get Address via Reverse Geocoding
-      const addressPrompt = `Identify the exact location/address for coordinates: ${lat}, ${lon}. Just return the short address string (City, Area).`
-      const addressResult = await model.generateContent(addressPrompt)
-      setCurrentAddress(addressResult.response.text().trim())
 
       // 2. Get Real-time Nearby Hospitals
       const hospitalPrompt = `Find 5 real, major hospitals near coordinates ${lat}, ${lon}. 
@@ -126,15 +194,66 @@ function SOSEmergency() {
         emergency247: true
       })).sort((a: any, b: any) => a.distance - b.distance)
 
-      setNearbyHospitals(prev => {
-        // Merge with existing but prioritize nearest
-        const combined = [...prev, ...formattedHospitals]
-        const unique = Array.from(new Map(combined.map(item => [item.name, item])).values())
-        return unique.sort((a, b) => a.distance - b.distance).slice(0, 8)
-      })
-    } catch (err) {
-      console.error('Real-time hospital search failed:', err)
+      saveHospitalsToCache(formattedHospitals)
+      updateHospitalsList(formattedHospitals)
+    } catch (error) {
+      console.warn("Real-time AI hospital search failed", error)
     }
+  }
+
+  const fetchHospitalsFromOSM = async (lat: number, lon: number) => {
+    try {
+      // Overpass API query for hospitals within 5km
+      const query = `[out:json];node["amenity"="hospital"](around:5000,${lat},${lon});out;`
+      const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`
+      
+      const res = await fetch(url)
+      const data = await res.json()
+      
+      if (data && data.elements) {
+        const osmHospitals = data.elements.map((el: any) => ({
+          id: el.id,
+          name: el.tags.name || 'Local Clinic/Hospital',
+          address: el.tags['addr:full'] || el.tags['addr:street'] || 'Nearby Location',
+          phone: el.tags['contact:phone'] || el.tags.phone || 'N/A',
+          latitude: el.lat,
+          longitude: el.lon,
+          services: ['Local Emergency', 'OpenStreetMap Verified'],
+          emergency247: el.tags['opening_hours'] === '24/7',
+          distance: calculateDistance(lat, lon, el.lat, el.lon)
+        }))
+        
+        saveHospitalsToCache(osmHospitals)
+        updateHospitalsList(osmHospitals)
+      }
+    } catch (err) {
+      console.error("OSM Fetch failed", err)
+    }
+  }
+
+  const saveHospitalsToCache = async (hospitals: any[]) => {
+    for (const h of hospitals) {
+      await dbHelper.addCachedHospital({
+        name: h.name,
+        address: h.address,
+        phone: h.phone,
+        latitude: h.latitude,
+        longitude: h.longitude,
+        services: h.services,
+        emergency247: h.emergency247,
+        timestamp: Date.now(),
+        externalId: `loc-${h.name}-${h.latitude}`
+      })
+    }
+  }
+
+  const updateHospitalsList = (newHospitals: any[]) => {
+    setNearbyHospitals(prev => {
+      const combined = [...newHospitals, ...prev]
+      // Filter out duplicates and keep nearest 10
+      const unique = Array.from(new Map(combined.map(item => [item.name, item])).values())
+      return unique.sort((a, b) => a.distance - b.distance).slice(0, 10)
+    })
   }
 
   // Copy phone number to clipboard
@@ -395,7 +514,9 @@ function SOSEmergency() {
               </div>
               {currentAddress && (
                 <div className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20">
-                  <p className="text-[10px] uppercase tracking-widest font-bold opacity-70">Live Location</p>
+                  <p className="text-[10px] uppercase tracking-widest font-bold opacity-70">
+                    {navigator.onLine ? 'Live Location' : 'Cached Location'}
+                  </p>
                   <p className="text-sm font-bold truncate max-w-[150px]">{currentAddress}</p>
                 </div>
               )}

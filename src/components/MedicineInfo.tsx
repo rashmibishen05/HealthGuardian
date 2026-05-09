@@ -229,11 +229,61 @@ function MedicineInfo() {
     }
   }
 
-  const handleCheckInteraction = () => {
+  const [checkingOnline, setCheckingOnline] = useState(false)
+
+  const handleCheckInteraction = async () => {
     if (!med1 || !med2) return
+    setHasChecked(false)
     const result = checkInteraction(med1, med2)
-    setInteractionResult(result)
-    setHasChecked(true)
+    
+    if (result) {
+      setInteractionResult(result)
+      setHasChecked(true)
+    } else if (navigator.onLine) {
+      handleOnlineInteractionCheck(med1, med2)
+    } else {
+      setInteractionResult(null)
+      setHasChecked(true)
+    }
+  }
+
+  const handleOnlineInteractionCheck = async (m1: string, m2: string) => {
+    setCheckingOnline(true)
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+      if (!apiKey) throw new Error("Key missing")
+      const genAI = new GoogleGenerativeAI(apiKey)
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+      
+      const prompt = `Analyze the drug interaction between "${m1}" and "${m2}".
+      Respond STRICTLY with JSON:
+      {
+        "hasInteraction": boolean,
+        "severity": "high" | "moderate" | "low",
+        "warning": "Short medical warning explanation"
+      }
+      If no interaction, set hasInteraction to false. ONLY RAW JSON.`
+      
+      const result = await model.generateContent(prompt)
+      const text = result.response.text().replace(/```json/gi, '').replace(/```/g, '').trim()
+      const data = JSON.parse(text)
+      
+      if (data.hasInteraction) {
+        setInteractionResult({
+          med1: m1,
+          med2: m2,
+          severity: data.severity,
+          warning: data.warning
+        })
+      } else {
+        setInteractionResult(null)
+      }
+      setHasChecked(true)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setCheckingOnline(false)
+    }
   }
 
   return (
@@ -368,10 +418,11 @@ function MedicineInfo() {
                    </div>
                    <button 
                       onClick={handleCheckInteraction}
-                      disabled={!med1 || !med2}
-                      className="w-full py-4 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-50"
+                      disabled={!med1 || !med2 || checkingOnline}
+                      className="w-full py-4 bg-blue-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                    >
-                      Verify Safety
+                      {checkingOnline && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                      {checkingOnline ? 'Consulting Global AI...' : 'Verify Safety'}
                    </button>
 
                    {hasChecked && (

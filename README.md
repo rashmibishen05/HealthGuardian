@@ -158,7 +158,7 @@ The app is configured with COOP/COEP headers for:
 ## Important Disclaimer
 
 **This is NOT a medical diagnosis tool.**
-
+git remote remove origin
 The information provided is for educational purposes only. Always consult a qualified healthcare professional for:
 - Medical advice
 - Diagnosis
@@ -277,5 +277,6 @@ This project is for educational purposes. Please ensure compliance with medical 
 ---
 
 **Remember: Always consult healthcare professionals for medical advice. This app is not a substitute for professional medical care.**
-#   H e a l t h G u a r d i a n  
+#   H e a l t h G u a r d i a n 
+ 
  

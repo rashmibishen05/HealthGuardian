@@ -13,7 +13,9 @@ function MedicationReminders() {
     times: ['08:00'],
     startDate: new Date().toISOString().slice(0, 10),
     notes: '',
-    reminderEnabled: true
+    reminderEnabled: true,
+    stock: 30,
+    minStock: 5
   })
 
   useEffect(() => {
@@ -42,7 +44,9 @@ function MedicationReminders() {
         times: ['08:00'],
         startDate: new Date().toISOString().slice(0, 10),
         notes: '',
-        reminderEnabled: true
+        reminderEnabled: true,
+        stock: 30,
+        minStock: 5
       })
       setShowForm(false)
       loadReminders()
@@ -83,6 +87,18 @@ function MedicationReminders() {
     const newTimes = [...form.times]
     newTimes[idx] = val
     setForm({ ...form, times: newTimes })
+  }
+
+  const updateStock = async (id: number, amount: number) => {
+    const reminder = reminders.find(r => r.id === id)
+    if (reminder) {
+      try {
+        await dbHelper.updateMedicationReminder(id, { ...reminder, stock: (reminder.stock || 0) + amount })
+        loadReminders()
+      } catch (e) {
+        console.error(e)
+      }
+    }
   }
 
   return (
@@ -156,6 +172,24 @@ function MedicationReminders() {
                       type="date"
                       value={form.startDate}
                       onChange={e => setForm({ ...form, startDate: e.target.value })}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Current Stock (Pills)</label>
+                    <input
+                      type="number"
+                      value={form.stock}
+                      onChange={e => setForm({ ...form, stock: parseInt(e.target.value) || 0 })}
+                      className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Min Stock Warning</label>
+                    <input
+                      type="number"
+                      value={form.minStock}
+                      onChange={e => setForm({ ...form, minStock: parseInt(e.target.value) || 0 })}
                       className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white"
                     />
                   </div>
@@ -233,19 +267,38 @@ function MedicationReminders() {
               </div>
               
               <div className="flex flex-col gap-2">
+                <div className="text-right">
+                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stock</p>
+                   <p className={`text-lg font-black ${(reminder.stock || 0) <= (reminder.minStock || 5) ? 'text-red-500 animate-pulse' : 'text-slate-900 dark:text-white'}`}>
+                     {reminder.stock || 0}
+                   </p>
+                   {(reminder.stock || 0) <= (reminder.minStock || 5) && (
+                     <span className="text-[8px] font-black text-red-500 uppercase">Low Stock!</span>
+                   )}
+                </div>
+
                 <button
-                  onClick={() => toggleReminder(reminder.id!, reminder.reminderEnabled)}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reminder.reminderEnabled ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}
-                  title={reminder.reminderEnabled ? 'Disable notifications' : 'Enable notifications'}
+                  onClick={() => updateStock(reminder.id!, 10)}
+                  className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-[10px] font-black uppercase tracking-widest border border-blue-100 dark:border-blue-800/30 hover:bg-blue-100 transition-all"
                 >
-                  {reminder.reminderEnabled ? <FaBell /> : <FaBellSlash />}
+                  Refill +10
                 </button>
-                <button
-                  onClick={() => deleteReminder(reminder.id)}
-                  className="w-10 h-10 bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-xl flex items-center justify-center transition-all"
-                >
-                  <FaTrash className="text-sm" />
-                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => toggleReminder(reminder.id!, reminder.reminderEnabled)}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${reminder.reminderEnabled ? 'bg-pink-100 dark:bg-pink-900/30 text-pink-600' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}`}
+                    title={reminder.reminderEnabled ? 'Disable notifications' : 'Enable notifications'}
+                  >
+                    {reminder.reminderEnabled ? <FaBell /> : <FaBellSlash />}
+                  </button>
+                  <button
+                    onClick={() => deleteReminder(reminder.id)}
+                    className="w-10 h-10 bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-xl flex items-center justify-center transition-all"
+                  >
+                    <FaTrash className="text-sm" />
+                  </button>
+                </div>
               </div>
             </motion.div>
           ))}

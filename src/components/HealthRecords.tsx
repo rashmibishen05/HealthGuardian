@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FaFileMedical, FaPlus, FaTrash, FaDownload, FaUserMd, FaLightbulb, FaCheckCircle, FaExclamationCircle, FaSync } from 'react-icons/fa'
+import { FaFileMedical, FaPlus, FaTrash, FaDownload, FaUserMd, FaLightbulb, FaCheckCircle, FaExclamationCircle, FaSync, FaImage, FaFileAlt } from 'react-icons/fa'
 import { dbHelper, type HealthRecord } from '../utils/indexedDB'
 import { analyzeVitals } from '../utils/healthAnalysis'
 import { syncToCloud } from '../utils/sync'
@@ -25,6 +25,7 @@ function HealthRecords() {
     doctor: '',
     date: new Date().toISOString().slice(0, 10),
     notes: '',
+    attachment: undefined
   })
   const [isSyncing, setIsSyncing] = useState(false)
   const userEmail = localStorage.getItem('userEmail')
@@ -32,6 +33,21 @@ function HealthRecords() {
   useEffect(() => {
     loadRecords()
   }, [])
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Image too large. Please use a file smaller than 2MB.')
+        return
+      }
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setForm({ ...form, attachment: reader.result as string })
+      }
+      reader.readAsDataURL(file)
+    }
+  }
 
   const loadRecords = async () => {
     try {
@@ -53,7 +69,7 @@ function HealthRecords() {
         timestamp: Date.now(),
       }
       await dbHelper.addHealthRecord(newRecord)
-      setForm({ type: 'prescription', title: '', doctor: '', date: new Date().toISOString().slice(0, 10), notes: '' })
+      setForm({ type: 'prescription', title: '', doctor: '', date: new Date().toISOString().slice(0, 10), notes: '', attachment: undefined })
       setShowForm(false)
       loadRecords()
       
@@ -203,6 +219,28 @@ function HealthRecords() {
                     className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-900 dark:text-white resize-none"
                   />
                 </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Attach Document (X-Ray, Prescription, etc.)</label>
+                  <div className="flex items-center gap-4">
+                    <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all group">
+                      {form.attachment ? (
+                        <div className="flex flex-col items-center">
+                           <img src={form.attachment} alt="Preview" className="h-20 w-auto rounded-lg mb-2 object-cover shadow-lg" />
+                           <span className="text-[10px] font-bold text-blue-500">Image Attached</span>
+                        </div>
+                      ) : (
+                        <>
+                          <FaImage className="text-2xl text-slate-400 mb-2 group-hover:text-blue-500 transition-colors" />
+                          <span className="text-xs font-bold text-slate-500">Upload Image / Scan</span>
+                        </>
+                      )}
+                      <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                    </label>
+                    {form.attachment && (
+                      <button type="button" onClick={() => setForm({...form, attachment: undefined})} className="text-red-500 text-xs font-bold hover:underline">Remove</button>
+                    )}
+                  </div>
+                </div>
               </div>
               <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3 px-8 rounded-xl font-bold mt-4 shadow-lg transition-all">
                 💾 Save Record Offline
@@ -293,6 +331,20 @@ function HealthRecords() {
                     <p className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700 leading-relaxed">
                       {record.notes}
                     </p>
+                    
+                    {record.attachment && (
+                      <div className="mt-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex items-center gap-2">
+                           <FaFileAlt /> Attachment
+                        </p>
+                        <img 
+                          src={record.attachment} 
+                          alt="Record Attachment" 
+                          className="w-full h-auto rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:scale-[1.01] transition-transform cursor-pointer"
+                          onClick={() => window.open(record.attachment, '_blank')}
+                        />
+                      </div>
+                    )}
                     
                     {/* Advanced Offline Insight */}
                     {analyzeVitals(record.notes).length > 0 && (

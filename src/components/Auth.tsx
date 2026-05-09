@@ -83,7 +83,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       // 1. Try Real Nodemailer Server First
       if (isOnline) {
         try {
-          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+          const apiUrl = import.meta.env.VITE_API_URL || '';
           const response = await fetch(`${apiUrl}/api/send-otp`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -178,7 +178,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     // 2. Real Server Verification
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const apiUrl = import.meta.env.VITE_API_URL || '';
       const response = await fetch(`${apiUrl}/api/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,6 +193,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         if (isOnline) {
           setStatus("☁️ Restoring Cloud Data...");
           try {
+            const apiUrl = import.meta.env.VITE_API_URL || '';
             const dataRes = await fetch(`${apiUrl}/api/get-data?email=${email}`);
             const dataResult = await dataRes.json();
             if (dataResult.success && dataResult.data) {
@@ -220,7 +221,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-slate-50 dark:bg-[#020617] p-4 font-sans">
+    <div className="py-12 flex items-center justify-center relative overflow-hidden font-sans">
       {/* Background Elements */}
       <div className="absolute inset-0 pointer-events-none">
         <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.4, 0.3] }} transition={{ duration: 10, repeat: Infinity }} className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-500/10 blur-[120px]" />

@@ -1,6 +1,19 @@
 // Enhanced IndexedDB wrapper for offline storage
 const DB_NAME = 'HealthGuardianDB'
-const DB_VERSION = 2 // Incremented for new stores
+const DB_VERSION = 3 // Incremented for hospital caching
+
+export interface CachedHospital {
+  id?: number
+  externalId?: string
+  name: string
+  address: string
+  phone: string
+  latitude: number
+  longitude: number
+  services: string[]
+  emergency247: boolean
+  timestamp: number
+}
 
 export interface MedicineRecord {
   id?: number
@@ -40,6 +53,8 @@ export interface MedicationReminder {
   endDate?: string
   notes?: string
   reminderEnabled: boolean
+  stock?: number
+  minStock?: number
 }
 
 export interface HealthRecord {
@@ -49,7 +64,8 @@ export interface HealthRecord {
   date: string
   doctor?: string
   notes: string
-  files?: string[] // Base64 encoded files
+  files?: string[] // Legacy
+  attachment?: string // Base64 encoded single image/scan
   timestamp: number
 }
 
@@ -121,7 +137,52 @@ class IndexedDBHelper {
           recordsStore.createIndex('type', 'type', { unique: false })
           recordsStore.createIndex('date', 'date', { unique: false })
         }
+
+        // Create cached hospitals store
+        if (!db.objectStoreNames.contains('cachedHospitals')) {
+          const hospitalStore = db.createObjectStore('cachedHospitals', {
+            keyPath: 'id',
+            autoIncrement: true,
+          })
+          hospitalStore.createIndex('name', 'name', { unique: false })
+          hospitalStore.createIndex('externalId', 'externalId', { unique: true })
+        }
       }
+    })
+  }
+
+  // Hospital methods
+  async addCachedHospital(hospital: CachedHospital): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'))
+        return
+      }
+
+      const transaction = this.db.transaction(['cachedHospitals'], 'readwrite')
+      const store = transaction.objectStore('cachedHospitals')
+      
+      // Try to avoid duplicates by checking externalId if possible
+      const request = store.put(hospital) 
+
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    })
+  }
+
+  async getCachedHospitals(): Promise<CachedHospital[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.db) {
+        reject(new Error('Database not initialized'))
+        return
+      }
+
+      const transaction = this.db.transaction(['cachedHospitals'], 'readonly')
+      const store = transaction.objectStore('cachedHospitals')
+      const request = store.getAll()
+
+      request.onsuccess = () => resolve(request.result as CachedHospital[])
+      request.onerror = () => reject(request.error)
     })
   }
 

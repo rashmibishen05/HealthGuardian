@@ -65,3 +65,40 @@ export function analyzeVitals(text: string): HealthInsight[] {
 
   return insights;
 }
+
+export interface HealthScoreResult {
+  score: number
+  summary: string
+  color: string
+}
+
+export function calculateHealthScore(insights: HealthInsight[]): HealthScoreResult {
+  if (insights.length === 0) return { score: 0, summary: 'No data to analyze.', color: 'gray' }
+  
+  let score = 100
+  let criticalCount = 0
+  
+  insights.forEach(insight => {
+    if (insight.status === 'critical') {
+      score -= 40
+      criticalCount++
+    } else if (insight.status === 'high' || insight.status === 'low') {
+      score -= 15
+    }
+  })
+  
+  score = Math.max(0, score)
+  
+  let summary = 'Your health markers are excellent.'
+  let color = 'green'
+  
+  if (score < 50 || criticalCount > 0) {
+    summary = 'Immediate medical attention may be needed.'
+    color = 'red'
+  } else if (score < 85) {
+    summary = 'Some markers need attention and lifestyle changes.'
+    color = 'amber'
+  }
+  
+  return { score, summary, color }
+}

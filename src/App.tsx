@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   FaHeartbeat, FaPills, FaRobot, FaExclamationTriangle, 
-  FaFileMedical, FaBars, FaTimes, FaMoon, FaSun, FaShieldAlt,
+  FaFileMedical, FaBars, FaTimes, FaMoon, FaSun, FaShieldAlt, FaLock,
   FaCalculator, FaClock, FaStethoscope, FaChartLine, FaCog
 } from 'react-icons/fa'
 import SOSEmergency from './components/SOSEmergency'
@@ -18,9 +18,44 @@ import Disclaimer from './components/Disclaimer'
 import Settings from './components/Settings'
 import { useTheme } from './utils/ThemeContext'
 import Auth from './components/Auth'
+import { dbHelper, type MedicationReminder } from './utils/indexedDB'
 import { syncToCloud } from './utils/sync'
 
 function App() {
+  const [lastNotificationTime, setLastNotificationTime] = useState<string>('')
+
+  useEffect(() => {
+    const checkReminders = async () => {
+      if (Notification.permission !== 'granted') return
+
+      const now = new Date()
+      const currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+      
+      if (currentTime === lastNotificationTime) return
+
+      try {
+        const reminders = await dbHelper.getMedicationReminders()
+        const activeReminders = reminders.filter((r: MedicationReminder) => r.reminderEnabled)
+        
+        activeReminders.forEach((reminder: MedicationReminder) => {
+          if (reminder.times.includes(currentTime)) {
+            new Notification('💊 Medication Reminder', {
+              body: `It's time to take your ${reminder.medicineName} (${reminder.dosage})`,
+              icon: '/icon-192.png',
+              tag: `med-${reminder.id}-${currentTime}`
+            })
+            setLastNotificationTime(currentTime)
+          }
+        })
+      } catch (err) {
+        console.error('Reminder check failed:', err)
+      }
+    }
+
+    const interval = setInterval(checkReminders, 30000) // Check every 30 seconds
+    return () => clearInterval(interval)
+  }, [lastNotificationTime])
+
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem('isAuthenticated') === 'true'
   })
@@ -58,6 +93,13 @@ function App() {
     setIsAuthenticated(true)
   }
 
+  const handleLogout = () => {
+    setIsAuthenticated(false)
+    localStorage.removeItem('isAuthenticated')
+    localStorage.removeItem('userEmail')
+    setActiveTab('sos')
+  }
+
   const tabs = [
     { id: 'sos', label: 'SOS EMERGENCY', icon: <FaExclamationTriangle />, color: 'from-red-600 to-rose-600' },
     { id: 'health', label: 'AI ASSISTANT', icon: <FaRobot />, color: 'from-blue-600 to-indigo-600' },
@@ -72,6 +114,11 @@ function App() {
   ]
 
   const renderContent = () => {
+    // Protected tabs
+    if (!isAuthenticated && (activeTab === 'records' || activeTab === 'reminders' || activeTab === 'trends')) {
+      return <Auth onLogin={handleLogin} />
+    }
+
     switch (activeTab) {
       case 'sos': return <SOSEmergency />
       case 'health': return <AIHealthAssistant />
@@ -87,9 +134,6 @@ function App() {
     }
   }
 
-  if (!isAuthenticated) {
-    return <Auth onLogin={handleLogin} />
-  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] dark:bg-[#020617] text-slate-900 dark:text-slate-200 selection:bg-blue-500/30 font-sans transition-colors duration-500">
@@ -159,9 +203,28 @@ function App() {
             {theme === 'dark' ? <FaSun className="text-amber-400" /> : <FaMoon className="text-blue-600" />}
           </button>
           <div className="hidden md:flex flex-col items-end">
-            <span className="text-[10px] font-black tracking-tighter text-blue-400 uppercase">System Status</span>
-            <span className="text-xs font-bold text-slate-300">Vault Secure</span>
+            <span className={`text-[10px] font-black tracking-tighter uppercase ${isAuthenticated ? 'text-green-500' : 'text-blue-400'}`}>
+              {isAuthenticated ? 'Vault Unlocked' : 'Vault Locked'}
+            </span>
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-300">
+              {isAuthenticated ? 'Sync Active' : 'Offline Mode'}
+            </span>
           </div>
+          {!isAuthenticated ? (
+            <button 
+              onClick={() => setActiveTab('records')}
+              className="hidden sm:flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+            >
+              Login / Sign Up
+            </button>
+          ) : (
+            <button 
+              onClick={handleLogout}
+              className="hidden sm:flex items-center gap-2 px-6 py-2.5 rounded-xl bg-red-500/10 text-red-500 text-[11px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all active:scale-95"
+            >
+              Logout
+            </button>
+          )}
           <button 
             className="lg:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/5"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -205,6 +268,22 @@ function App() {
                     {tab.label}
                   </button>
                 ))}
+                
+                {isAuthenticated ? (
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-4 p-4 rounded-2xl text-sm font-bold text-red-400 hover:bg-red-400/10 mt-4 border border-red-400/20"
+                  >
+                    <FaShieldAlt /> LOGOUT FROM VAULT
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setActiveTab('records'); setIsSidebarOpen(false); }}
+                    className="flex items-center gap-4 p-4 rounded-2xl text-sm font-bold text-blue-400 hover:bg-blue-400/10 mt-4 border border-blue-400/20"
+                  >
+                    <FaLock /> LOGIN / SIGN UP
+                  </button>
+                )}
               </div>
             </motion.div>
           </>

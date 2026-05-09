@@ -186,20 +186,56 @@ function Settings() {
               </p>
            </div>
 
-           {/* Danger Zone */}
-           <div className="pt-8 border-t border-slate-200 dark:border-slate-800">
-              <h3 className="text-xl font-bold text-red-500 mb-4 flex items-center gap-2">
-                <FaTrash /> Danger Zone
-              </h3>
-              <div className="p-6 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-3xl">
-                 <p className="text-sm text-red-700 dark:text-red-400 mb-4 font-medium">
-                   Clearing data will permanently delete all your health history, medical records, and medication reminders. This action cannot be undone.
-                 </p>
-                 <button onClick={handleClear} className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-2xl transition-all shadow-lg shadow-red-600/20">
-                   Clear All Local Data
-                 </button>
-              </div>
-           </div>
+            {/* Account Section */}
+            <div className="pt-8 border-t border-slate-200 dark:border-slate-800">
+               <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                 <FaShieldAlt className="text-blue-500" /> Account Security
+               </h3>
+               <div className="p-6 glass rounded-3xl flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div>
+                    <p className="font-bold text-slate-900 dark:text-white">
+                      {localStorage.getItem('userEmail') ? `Logged in as: ${localStorage.getItem('userEmail')}` : 'Not logged in'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {localStorage.getItem('userEmail') ? 'Your data is being synced to the cloud.' : 'Login to sync your data across devices.'}
+                    </p>
+                  </div>
+                  {localStorage.getItem('isAuthenticated') === 'true' ? (
+                    <button 
+                      onClick={() => {
+                        localStorage.removeItem('isAuthenticated');
+                        localStorage.removeItem('userEmail');
+                        window.location.reload();
+                      }}
+                      className="bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-900 dark:text-white font-bold py-3 px-8 rounded-2xl transition-all"
+                    >
+                      Logout from Vault
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => window.location.reload()} // Reloading will trigger the auth check if they navigate to records, or we can just tell them to navigate.
+                      className="btn-primary py-3 px-8 rounded-2xl"
+                    >
+                      Login to Vault
+                    </button>
+                  )}
+               </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="pt-8 border-t border-slate-200 dark:border-slate-800">
+               <h3 className="text-xl font-bold text-red-500 mb-4 flex items-center gap-2">
+                 <FaTrash /> Danger Zone
+               </h3>
+               <div className="p-6 bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-3xl">
+                  <p className="text-sm text-red-700 dark:text-red-400 mb-4 font-medium">
+                    Clearing data will permanently delete all your health history, medical records, and medication reminders. This action cannot be undone.
+                  </p>
+                  <button onClick={handleClear} className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-2xl transition-all shadow-lg shadow-red-600/20">
+                    Clear All Local Data
+                  </button>
+               </div>
+            </div>
         </div>
       </motion.div>
 
