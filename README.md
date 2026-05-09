@@ -277,3 +277,5 @@ This project is for educational purposes. Please ensure compliance with medical 
 ---
 
 **Remember: Always consult healthcare professionals for medical advice. This app is not a substitute for professional medical care.**
+#   H e a l t h G u a r d i a n  
+ 
