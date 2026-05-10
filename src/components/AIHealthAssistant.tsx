@@ -205,9 +205,9 @@ function AIHealthAssistant() {
         setMessages(prev => [...prev, { role: 'assistant', content: response, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])
         dbHelper.saveChatMessage({ role: 'assistant', content: response })
         setIsLoading(false)
-      } catch (error) {
+      } catch (error: any) {
         console.warn("Gemini failed, falling back to offline", error)
-        handleOfflineFallback(userMsg)
+        handleOfflineFallback(userMsg, error.message)
       }
     } 
     // OFFLINE MODE: Transformers.js OR Keyword Database
@@ -216,7 +216,7 @@ function AIHealthAssistant() {
     }
   }
 
-  const handleOfflineFallback = async (userMsg: string) => {
+  const handleOfflineFallback = async (userMsg: string, onlineError?: string) => {
     // 1. Try Keyword DB first for instant emergency response
     let response = findResponse(userMsg)
     
@@ -248,7 +248,7 @@ function AIHealthAssistant() {
         workerRef.current?.postMessage({ type: 'generate', text: userMsg })
       })
     } else if (!response) {
-      fallbackToGeneric()
+      fallbackToGeneric(onlineError)
     } else {
       await sleep(500)
       setMessages(prev => [...prev, { role: 'assistant', content: response!, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])
@@ -257,8 +257,9 @@ function AIHealthAssistant() {
     }
   }
 
-  const fallbackToGeneric = () => {
-    const defaultResponse = `I am currently using the offline fallback and the local AI model is not downloaded yet. I can only answer questions about:\n\n• Fever, headache, cold, cough\n• Stomach ache, diarrhea\n• First aid, CPR, Heart attack\n\n🚨 **Emergency?** Call **112** (emergency) or **108** (ambulance)`
+  const fallbackToGeneric = (onlineError?: string) => {
+    const errorDetail = onlineError ? `\n\n⚠️ **Online Error:** ${onlineError}` : ''
+    const defaultResponse = `I am currently using the offline fallback and the local AI model is not downloaded yet. ${errorDetail}\n\nI can only answer questions about:\n\n• Fever, headache, cold, cough\n• Stomach ache, diarrhea\n• First aid, CPR, Heart attack\n\n🚨 **Emergency?** Call **112** (emergency) or **108** (ambulance)`
     setMessages(prev => [...prev, { role: 'assistant', content: defaultResponse, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }])
     setIsLoading(false)
   }
