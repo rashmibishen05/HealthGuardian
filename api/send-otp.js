@@ -1,7 +1,9 @@
 import nodemailer from 'nodemailer';
 import { Redis } from '@upstash/redis';
 
-const redis = Redis.fromEnv();
+const redis = (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+  ? new Redis({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN })
+  : Redis.fromEnv();
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -82,7 +84,22 @@ export default async function handler(req, res) {
     return res.status(200).json({ success: true, message: 'OTP sent' });
 
   } catch (error) {
-    console.error('API Error:', error);
-    return res.status(500).json({ success: false, message: 'System error. Check your Vercel KV connection.' });
+    console.error('API Error Details:', {
+      message: error.message,
+      stack: error.stack,
+      env_check: {
+        has_upstash_url: !!process.env.UPSTASH_REDIS_REST_URL,
+        has_kv_url: !!process.env.KV_REST_API_URL
+      }
+    });
+    
+    let errorMessage = 'System error. Please try again later.';
+    if (error.message.includes('Redis') || error.message.includes('ECONNREFUSED')) {
+      errorMessage = 'Database connection error. Check your Vercel KV settings.';
+    } else if (error.code === 'EAUTH') {
+      errorMessage = 'Email authentication failed. Check your Gmail App Password.';
+    }
+
+    return res.status(500).json({ success: false, message: errorMessage, details: error.message });
   }
 }

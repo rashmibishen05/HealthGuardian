@@ -106,7 +106,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             return;
           } else {
             // Handle specific errors like "User not found" or "Invalid password"
-            setError(result.message || 'Authentication failed');
+            const detailedMsg = result.details ? `${result.message} (${result.details})` : result.message;
+            setError(detailedMsg || 'Authentication failed');
             setIsLoading(false);
             setStatus(null);
             return;

@@ -1,6 +1,8 @@
 import { Redis } from '@upstash/redis';
 
-const redis = Redis.fromEnv();
+const redis = (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+  ? new Redis({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN })
+  : Redis.fromEnv();
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -19,7 +21,7 @@ export default async function handler(req, res) {
       await redis.set(`data:${email}`, data);
       return res.status(200).json({ success: true, message: 'Data synced to cloud' });
     } catch (error) {
-      return res.status(500).json({ success: false, message: 'Sync failed' });
+      return res.status(500).json({ success: false, message: 'Sync failed', details: error.message });
     }
   }
 
@@ -29,7 +31,7 @@ export default async function handler(req, res) {
       const data = await redis.get(`data:${email}`);
       return res.status(200).json({ success: true, data });
     } catch (error) {
-      return res.status(500).json({ success: false, message: 'Fetch failed' });
+      return res.status(500).json({ success: false, message: 'Fetch failed', details: error.message });
     }
   }
 }

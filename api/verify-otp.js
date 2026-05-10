@@ -1,6 +1,8 @@
 import { Redis } from '@upstash/redis';
 
-const redis = Redis.fromEnv();
+const redis = (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+  ? new Redis({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN })
+  : Redis.fromEnv();
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -38,6 +40,14 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Verify Error:', error);
-    return res.status(500).json({ success: false, message: 'Verification system error' });
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Verification system error', 
+      details: error.message,
+      env_check: {
+        has_upstash_url: !!process.env.UPSTASH_REDIS_REST_URL,
+        has_kv_url: !!process.env.KV_REST_API_URL
+      }
+    });
   }
 }
