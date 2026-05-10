@@ -1,8 +1,7 @@
 {
-  "name": "offline-health-guardian",
+  "name": "health-vault-app",
   "private": true,
   "version": "1.0.0",
-  "homepage": "https://health-guardian-gilt.vercel.app/",
   "description": "Offline-first health assistant with SOS emergency system, medicine information, and AI health chatbot",
   "type": "module",
   "scripts": {
