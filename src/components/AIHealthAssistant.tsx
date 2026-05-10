@@ -48,6 +48,7 @@ const HEALTH_KB: Record<string, string> = {
   backpain: `🚶 **Back Pain Management**\n\n• Stay active — avoid complete bed rest\n• Use heat for muscle stiffness, ice for acute pain\n• Improve posture while sitting/standing\n• Core strengthening exercises (Planks, bird-dog)\n• Sleep on a firm mattress\n\n🚨 **See doctor if:** Numbness, weakness, or pain radiating down leg occurs.`,
   jaundice: `🟡 **Jaundice / Liver Health**\n\n**Symptoms:**\n• Yellowing of skin and eyes (sclera)\n• Dark-colored urine\n• Pale-colored stools\n• Itchy skin and fatigue\n\n🚨 **Management:**\n1. Avoid ALL alcohol and oily/fatty foods\n2. Drink plenty of sugarcane juice or glucose water\n3. Eat easily digestible foods (boiled rice, papaya)\n4. Consult doctor for Hepatitis testing\n5. Rest is mandatory for liver recovery`,
   pneumonia: `🫁 **Pneumonia Information**\n\n**Symptoms:**\n• Cough with phlegm (pus)\n• Fever, chills, and difficulty breathing\n• Chest pain when breathing or coughing\n• Confusion (especially in elderly)\n\n🚨 **Action:**\n1. Consult doctor immediately — antibiotics are often needed\n2. Use a humidifier or take steamy baths\n3. Drink plenty of fluids to loosen mucus\n4. Use Paracetamol for fever\n5. Complete the full course of medicine`,
+  nosebleed: `🩸 **Nosebleed (Epistaxis) First Aid**\n\n1. **Sit upright and lean forward** — do NOT lean back (this prevents blood from going down your throat)\n2. **Pinch the soft part of your nose** firmly for 10-15 minutes without letting go\n3. **Breathe through your mouth** while pinching\n4. **Apply an ice pack** to the bridge of your nose to help constrict blood vessels\n5. **Do NOT blow your nose** or pick it for 24 hours after the bleeding stops\n\n🚨 **Seek Emergency Care (112) if:**\n→ Bleeding lasts longer than 20 minutes\n→ Bleeding is very heavy and you've lost a lot of blood\n→ You have trouble breathing\n→ You are vomiting blood after swallowing it\n→ The nosebleed follows a serious injury (like a car crash)`,
 }
 
 function findResponse(query: string): string | null {
@@ -91,6 +92,7 @@ function findResponse(query: string): string | null {
     backpain: 'backpain', 'back pain': 'backpain', 'spine pain': 'backpain', 'lower back': 'backpain',
     jaundice: 'jaundice', liver: 'jaundice', yellow: 'jaundice', hepatitis: 'jaundice',
     pneumonia: 'pneumonia', 'lung infection': 'pneumonia', phlegm: 'pneumonia',
+    nosebleed: 'nosebleed', 'bleeding nose': 'nosebleed', epistaxis: 'nosebleed', 'nose bleed': 'nosebleed', 'bleeding from nose': 'nosebleed',
     'first aid': 'firstaid', firstaid: 'firstaid', emergency: 'firstaid', help: 'firstaid',
   }
   for (const [keyword, topic] of Object.entries(keywordMap)) {
